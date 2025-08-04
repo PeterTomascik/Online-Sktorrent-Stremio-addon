@@ -112,7 +112,9 @@ async function searchOnlineVideos(query) {
     try {
         const res = await axios.get(proxiedSearchUrl, { headers: commonHeaders }); 
         console.log(`[DEBUG] Status: ${res.status}`);
-        console.log(`[DEBUG] HTML Snippet:`, res.data.slice(0, 300));
+       // console.log(`[DEBUG] HTML Snippet:`, res.data.slice(0, 300));
+// ZMENA TU: Zväčšujeme dĺžku HTML snipppetu
+        console.log(`[DEBUG] HTML Snippet (first 5000 chars):`, res.data.slice(0, 5000)); 
 
         const $ = cheerio.load(res.data);
         const links = [];
