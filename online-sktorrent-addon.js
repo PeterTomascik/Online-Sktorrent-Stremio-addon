@@ -101,33 +101,39 @@ async function getTitleFromIMDb(imdbId) {
 }
 
 async function searchOnlineVideos(query) {
-    // --- ZMENA: Priama URL, bez proxy ---
-    const searchUrl = `https://online.sktorrent.eu/search/videos?search_query=${encodeURIComponent(query)}`;
-    console.log(`[INFO] 🔍 Hľadám '${query}' na ${searchUrl} (priamo)`);
-    // --- Koniec zmeny ---
+    const originalSearchUrl = `https://online.sktorrent.eu/search/videos?search_query=${encodeURIComponent(query)}`;
+    const fullProxiedUrlParam = `key=${PROXY_KEY}&url=${encodeURIComponent(originalSearchUrl)}`;
+    const proxiedSearchUrl = `${PROXY_BASE_URL}${encodeURIComponent(fullProxiedUrlParam)}`;
+    console.log(`[INFO] 🔍 Hľadám '${query}' na ${proxiedSearchUrl} (cez proxy)`);
 
     try {
-        // Oprava: Použi 'searchUrl' namiesto 'proxiedSearchUrl'
-        const res = await axios.get(searchUrl, { headers: commonHeaders }); 
+        const res = await axios.get(proxiedSearchUrl, { headers: commonHeaders }); 
         console.log(`[DEBUG] Status: ${res.status}`);
-        console.log(`[DEBUG] HTML Snippet (first 5000 chars):`, res.data.slice(0, 5000)); 
+        // Log len prvých 1000 znakov, aby neboli logy príliš dlhé
+        console.log(`[DEBUG] HTML Snippet:`, res.data.slice(0, 1000)); 
 
         const $ = cheerio.load(res.data);
         const links = [];
         
-        $("a[href^='/video/']:has(span.video-title)").each((i, el) => {
-            const href = $(el).attr("href");
-            if (href) {
-                const match = href.match(/\/video\/(\d+)/); 
-                if (match && match[1]) {
-                    links.push(match[1]);
-                    console.log(`[DEBUG]   Found video link: ${href}, Extracted ID: ${match[1]}`); 
-                } else {
-                    console.log(`[DEBUG]   Found link, but could not extract ID from: ${href}`); 
+        // --- NOVÁ LOGIKA SCRAPOVANIA (ZAČIATOK ZMENY) ---
+        // Vyhľadáme všetky divy s triedou 'video-item'
+        // A vo vnútri nich nájdeme priame odkazy na video
+        $('div.video-item a[href^="/video/"]').each((i, el) => {
+            const href = $(el).attr('href');
+            // Z url /video/14371/malery-pana-ucetniho-... extrahujeme len 14371
+            const match = href ? href.match(/\/video\/(\d+)\//) : null; 
+            if (match && match[1]) {
+                const videoId = match[1];
+                // Voliteľne, môžeme skontrolovať aj názov, aby sme boli si istí, že ide o validný záznam
+                const titleSpan = $(el).find('span.video-title');
+                if (titleSpan.length > 0) {
+                     // Ak je potrebné nejaké filtrovanie podľa názvu, môže sa pridať sem
+                     links.push(videoId);
                 }
             }
         });
-        
+        // --- NOVÁ LOGIKA SCRAPOVANIA (KONIEC ZMENY) ---
+
         console.log(`[INFO] 📺 Nájdených videí: ${links.length}`);
         return links;
     } catch (err) {
