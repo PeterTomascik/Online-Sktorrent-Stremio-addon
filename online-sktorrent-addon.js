@@ -103,12 +103,16 @@ async function getTitleFromIMDb(imdbId) {
 }
 
 async function searchOnlineVideos(query) {
-    const originalSearchUrl = `https://online.sktorrent.eu/search/videos?search_query=${encodeURIComponent(query)}`;
+  //  const originalSearchUrl = `https://online.sktorrent.eu/search/videos?search_query=${encodeURIComponent(query)}`;
     // --- ZMENA PRE PROXY (OPRAVENÁ LOGIKA) ---
     // Teraz posielame iba zakódovanú cieľovú URL ako parameter 'url'
-    const proxiedSearchUrl = `${PROXY_BASE_URL}url=${encodeURIComponent(originalSearchUrl)}`;
-    console.log(`[INFO] 🔍 Hľadám '${query}' na ${proxiedSearchUrl} (cez proxy)`);
+   // const proxiedSearchUrl = `${PROXY_BASE_URL}url=${encodeURIComponent(originalSearchUrl)}`;
+    //console.log(`[INFO] 🔍 Hľadám '${query}' na ${proxiedSearchUrl} (cez proxy)`);
     // --- ZMENA PRE PROXY (KONIEC OPRAVY) ---
+     // --- ZMENA: Priama URL, bez proxy ---
+    const searchUrl = `https://online.sktorrent.eu/search/videos?search_query=${encodeURIComponent(query)}`;
+    console.log(`[INFO] 🔍 Hľadám '${query}' na ${searchUrl} (priamo)`);
+    // --- Koniec zmeny ---
 
     try {
         // Axios automaticky pridá hlavičky z 'commonHeaders', vrátane 'x-corsproxy-key'
