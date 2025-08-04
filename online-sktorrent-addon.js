@@ -9,7 +9,7 @@ const builder = addonBuilder({
     id: "org.stremio.sktonline",
     version: "1.0.0",
     name: "SKTonline Online Streams",
-    description: "Priame online videá (720p/480p/360p) z online.sktorrent.eu (cez proxy)", // Upravený popis
+    description: "Priame online videá (720p/480p/360p) z online.sktorrent.eu (cez CodeTabs proxy)", // Upravený popis
     types: ["movie", "series"],
     catalogs: [
         { type: "movie", id: "sktonline-movie", name: "SKTonline Filmy" },
@@ -25,9 +25,8 @@ const commonHeaders = {
     'Accept-Encoding': 'identity'
 };
 
-// --- KONŠTANTY PRE PROXY (AKTÍVNE) ---
-const PROXY_KEY = '205111'; // *** TVOJ API KĽÚČ ***
-const PROXY_BASE_URL = 'https://corsproxy.io/?';
+// --- KONŠTANTY PRE PROXY (api.codetabs.com) ---
+const PROXY_BASE_URL = 'https://api.codetabs.com/v1/proxy?quest=';
 // --- KONŠTANTY PRE PROXY (KONIEC) ---
 
 function removeDiacritics(str) {
@@ -103,9 +102,8 @@ async function getTitleFromIMDb(imdbId) {
 async function searchOnlineVideos(query) {
     const originalSearchUrl = `https://online.sktorrent.eu/search/videos?search_query=${encodeURIComponent(query)}`;
     // URL pre proxy, ktorá zapuzdruje pôvodnú URL
-    const fullProxiedUrlParam = `key=${PROXY_KEY}&url=${encodeURIComponent(originalSearchUrl)}`;
-    const proxiedSearchUrl = `${PROXY_BASE_URL}${encodeURIComponent(fullProxiedUrlParam)}`;
-    console.log(`[INFO] 🔍 Hľadám '${query}' na ${proxiedSearchUrl} (cez proxy)`);
+    const proxiedSearchUrl = `${PROXY_BASE_URL}${encodeURIComponent(originalSearchUrl)}`;
+    console.log(`[INFO] 🔍 Hľadám '${query}' na ${proxiedSearchUrl} (cez CodeTabs proxy)`);
 
     try {
         const res = await axios.get(proxiedSearchUrl, { headers: commonHeaders });
@@ -116,7 +114,7 @@ async function searchOnlineVideos(query) {
         const $ = cheerio.load(res.data);
         const links = [];
 
-        // --- Logika scrapovania (upravená na hľadanie div.video-item a potom a[href]) ---
+        // Logika scrapovania (upravená na hľadanie div.video-item a potom a[href])
         $('div.video-item a[href^="/video/"]').each((i, el) => {
             const href = $(el).attr('href');
             // Z url /video/14371/malery-pana-ucetniho-... extrahujeme len 14371
@@ -129,7 +127,6 @@ async function searchOnlineVideos(query) {
                 }
             }
         });
-        // --- Koniec logiky scrapovania ---
 
         console.log(`[INFO] 📺 Nájdených videí: ${links.length}`);
         return links;
@@ -142,9 +139,8 @@ async function searchOnlineVideos(query) {
 async function extractStreamsFromVideoId(videoId) {
     const originalVideoUrl = `https://online.sktorrent.eu/video/${videoId}`;
     // URL pre proxy, ktorá zapuzdruje pôvodnú URL
-    const fullProxiedUrlParam = `key=${PROXY_KEY}&url=${encodeURIComponent(originalVideoUrl)}`;
-    const proxiedVideoUrl = `${PROXY_BASE_URL}${encodeURIComponent(fullProxiedUrlParam)}`;
-    console.log(`[DEBUG] 🔎 Načítavam detaily videa: ${proxiedVideoUrl} (cez proxy)`);
+    const proxiedVideoUrl = `${PROXY_BASE_URL}${encodeURIComponent(originalVideoUrl)}`;
+    console.log(`[DEBUG] 🔎 Načítavam detaily videa: ${proxiedVideoUrl} (cez CodeTabs proxy)`);
 
     try {
         // Použi proxiedVideoUrl pre požiadavku
@@ -162,13 +158,6 @@ async function extractStreamsFromVideoId(videoId) {
             let src = $(el).attr('src');
             const label = $(el).attr('label') || 'Unknown';
             if (src && src.endsWith('.mp4')) {
-                // src musí byť relatívne k online.sktorrent.eu a potom cez proxy
-                // Ak je src už kompletná URL, tak ju použijeme. Ak je relatívna, musíme ju spojiť s bázovou URL SKTorrentu.
-                // Väčšinou bývajú stream URL už absolútne.
-                
-                // Dôležité: STREAM URL SA NEBUDE VOLAŤ CEZ CORSPROXY.IO!
-                // Streamy často potrebujú priame volanie, alebo iný proxy.
-                // Ak streamy nefungujú, je to ďalší problém mimo proxy pre scraping HTML.
                 // Pre MP4 streamy sa zvyčajne proxy nepoužíva, lebo Stremio player by to už mal vedieť prehrať priamo.
                 src = src.replace(/([^:])\/\/+/, '$1/');
                 console.log(`[DEBUG] 🎞️ ${label} stream URL: ${src}`);
