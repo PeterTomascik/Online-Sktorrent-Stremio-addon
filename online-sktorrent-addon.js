@@ -19,15 +19,17 @@ const builder = addonBuilder({
     idPrefixes: ["tt"]
 });
 
-const commonHeaders = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0.0.0 Safari/537.36',
-    'Accept-Encoding': 'identity'
-};
-
 // --- NOVÉ KONŠTANTY PRE PROXY (OPRAVENÁ LOGIKA) ---
 const PROXY_KEY = '205111'; // *** SEM NAHRAĎ SVOJ SKUTOČNÝ KĽÚČ ***
 const PROXY_BASE_URL = 'https://corsproxy.io/?'; 
 // --- NOVÉ KONŠTANTY PRE PROXY (KONIEC OPRAVY) ---
+
+// Hlavičky sa teraz rozšíria o x-corsproxy-key
+const commonHeaders = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0.0.0 Safari/537.36',
+    'Accept-Encoding': 'identity',
+    'x-corsproxy-key': PROXY_KEY // <--- PRIDANÉ: Kľúč ako hlavička pre corsproxy.io
+};
 
 
 function removeDiacritics(str) {
@@ -103,32 +105,21 @@ async function getTitleFromIMDb(imdbId) {
 async function searchOnlineVideos(query) {
     const originalSearchUrl = `https://online.sktorrent.eu/search/videos?search_query=${encodeURIComponent(query)}`;
     // --- ZMENA PRE PROXY (OPRAVENÁ LOGIKA) ---
-    // Najprv vytvoríme celú URL s kľúčom a pôvodnou URL, a potom ju ZNOVA zakódujeme
-    const fullProxiedUrlParam = `key=${PROXY_KEY}&url=${encodeURIComponent(originalSearchUrl)}`;
-    const proxiedSearchUrl = `${PROXY_BASE_URL}${encodeURIComponent(fullProxiedUrlParam)}`;
+    // Teraz posielame iba zakódovanú cieľovú URL ako parameter 'url'
+    const proxiedSearchUrl = `${PROXY_BASE_URL}url=${encodeURIComponent(originalSearchUrl)}`;
     console.log(`[INFO] 🔍 Hľadám '${query}' na ${proxiedSearchUrl} (cez proxy)`);
     // --- ZMENA PRE PROXY (KONIEC OPRAVY) ---
 
     try {
+        // Axios automaticky pridá hlavičky z 'commonHeaders', vrátane 'x-corsproxy-key'
         const res = await axios.get(proxiedSearchUrl, { headers: commonHeaders }); 
         console.log(`[DEBUG] Status: ${res.status}`);
-       // console.log(`[DEBUG] HTML Snippet:`, res.data.slice(0, 300));
-// ZMENA TU: Zväčšujeme dĺžku HTML snipppetu
+        // Zväčšujeme dĺžku HTML snipppetu
         console.log(`[DEBUG] HTML Snippet (first 5000 chars):`, res.data.slice(0, 5000)); 
 
         const $ = cheerio.load(res.data);
         const links = [];
-
         
-  //      $("a[href^='/video/']").each((i, el) => {
-    //        const href = $(el).attr("href");
-      //      if (href) {
-        //        const match = href.match(/\/video\/(\d+)/);
-          //      if (match) links.push(match[1]);
-          //  }
-        //});
-
- // --- ZMENA V TEJTO ČASTI (ZAČIATOK ZMENY) ---
         // Vyberáme všetky A tagy, ktoré majú href začínajúci na '/video/'
         // A ktoré majú v sebe aj span.video-title (aby sme odfiltrovali iné irelevantné linky)
         $("a[href^='/video/']:has(span.video-title)").each((i, el) => {
@@ -144,7 +135,6 @@ async function searchOnlineVideos(query) {
                 }
             }
         });
-        // --- ZMENA V TEJTO ČASTI (KONIEC ZMENY) ---
         
         console.log(`[INFO] 📺 Nájdených videí: ${links.length}`);
         return links;
@@ -157,16 +147,17 @@ async function searchOnlineVideos(query) {
 async function extractStreamsFromVideoId(videoId) {
     const originalUrl = `https://online.sktorrent.eu/video/${videoId}`;
     // --- ZMENA PRE PROXY (OPRAVENÁ LOGIKA) ---
-    // Najprv vytvoríme celú URL s kľúčom a pôvodnou URL, a potom ju ZNOVA zakódujeme
-    const fullProxiedUrlParam = `key=${PROXY_KEY}&url=${encodeURIComponent(originalUrl)}`;
-    const proxiedUrl = `${PROXY_BASE_URL}${encodeURIComponent(fullProxiedUrlParam)}`;
+    // Teraz posielame iba zakódovanú cieľovú URL ako parameter 'url'
+    const proxiedUrl = `${PROXY_BASE_URL}url=${encodeURIComponent(originalUrl)}`;
     console.log(`[DEBUG] 🔎 Načítavam detaily videa: ${proxiedUrl} (cez proxy)`);
     // --- ZMENA PRE PROXY (KONIEC OPRAVY) ---
 
     try {
+        // Axios automaticky pridá hlavičky z 'commonHeaders', vrátane 'x-corsproxy-key'
         const res = await axios.get(proxiedUrl, { headers: commonHeaders });
         console.log(`[DEBUG] Status: ${res.status}`);
-        console.log(`[DEBUG] Detail HTML Snippet:`, res.data.slice(0, 300));
+        // Zväčšujeme dĺžku HTML snipppetu aj pre detaily videa
+        console.log(`[DEBUG] Detail HTML Snippet (first 5000 chars):`, res.data.slice(0, 5000));
 
         const $ = cheerio.load(res.data);
         const sourceTags = $('video source');
@@ -244,12 +235,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
     return { streams: allStreams };
 });
 
-//builder.defineCatalogHandler(({ type, id }) => {
-  //  console.log(`[DEBUG] 📚 Katalóg požiadavka pre typ='${type}' id='${id}'`);
-   // return { metas: [] };
-//});
-
-builder.defineCatalogHandler(async ({ type, id }) => { // <--- Tu pridaj 'async'
+builder.defineCatalogHandler(async ({ type, id }) => { // Pridáme 'async' pre správne fungovanie Promise
     console.log(`[DEBUG] 📚 Katalóg požiadavka pre typ='${type}' id='${id}'`);
     return { metas: [] };
 });
