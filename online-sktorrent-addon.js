@@ -25,7 +25,7 @@ const commonHeaders = {
 };
 
 // --- NOVÉ KONŠTANTY PRE PROXY (OPRAVENÁ LOGIKA) ---
-const PROXY_KEY = '205111; // *** SEM NAHRAĎ SVOJ SKUTOČNÝ KĽÚČ ***
+const PROXY_KEY = '205111'; // *** SEM NAHRAĎ SVOJ SKUTOČNÝ KĽÚČ ***
 const PROXY_BASE_URL = 'https://corsproxy.io/?'; 
 // --- NOVÉ KONŠTANTY PRE PROXY (KONIEC OPRAVY) ---
 
