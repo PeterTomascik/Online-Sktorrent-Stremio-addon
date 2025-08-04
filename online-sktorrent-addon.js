@@ -242,7 +242,12 @@ builder.defineStreamHandler(async ({ type, id }) => {
     return { streams: allStreams };
 });
 
-builder.defineCatalogHandler(({ type, id }) => {
+//builder.defineCatalogHandler(({ type, id }) => {
+  //  console.log(`[DEBUG] 📚 Katalóg požiadavka pre typ='${type}' id='${id}'`);
+   // return { metas: [] };
+//});
+
+builder.defineCatalogHandler(async ({ type, id }) => { // <--- Tu pridaj 'async'
     console.log(`[DEBUG] 📚 Katalóg požiadavka pre typ='${type}' id='${id}'`);
     return { metas: [] };
 });
