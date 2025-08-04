@@ -116,14 +116,34 @@ async function searchOnlineVideos(query) {
 
         const $ = cheerio.load(res.data);
         const links = [];
-        $("a[href^='/video/']").each((i, el) => {
+
+        
+  //      $("a[href^='/video/']").each((i, el) => {
+    //        const href = $(el).attr("href");
+      //      if (href) {
+        //        const match = href.match(/\/video\/(\d+)/);
+          //      if (match) links.push(match[1]);
+          //  }
+        //});
+
+ // --- ZMENA V TEJTO ČASTI (ZAČIATOK ZMENY) ---
+        // Vyberáme všetky A tagy, ktoré majú href začínajúci na '/video/'
+        // A ktoré majú v sebe aj span.video-title (aby sme odfiltrovali iné irelevantné linky)
+        $("a[href^='/video/']:has(span.video-title)").each((i, el) => {
             const href = $(el).attr("href");
             if (href) {
-                const match = href.match(/\/video\/(\d+)/);
-                if (match) links.push(match[1]);
+                // Skúsime extrahovať ID videa priamo z URL
+                const match = href.match(/\/video\/(\d+)/); 
+                if (match && match[1]) {
+                    links.push(match[1]);
+                    console.log(`[DEBUG]   Found video link: ${href}, Extracted ID: ${match[1]}`); // Nový log
+                } else {
+                    console.log(`[DEBUG]   Found link, but could not extract ID from: ${href}`); // Nový log
+                }
             }
         });
-
+        // --- ZMENA V TEJTO ČASTI (KONIEC ZMENY) ---
+        
         console.log(`[INFO] 📺 Nájdených videí: ${links.length}`);
         return links;
     } catch (err) {
