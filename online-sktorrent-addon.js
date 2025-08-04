@@ -9,7 +9,7 @@ const builder = addonBuilder({
     id: "org.stremio.sktonline",
     version: "1.0.0",
     name: "SKTonline Online Streams",
-    description: "Priame online videá (720p/480p/360p) z online.sktorrent.eu",
+    description: "Priame online videá (720p/480p/360p) z online.sktorrent.eu (cez proxy)", // Upravený popis
     types: ["movie", "series"],
     catalogs: [
         { type: "movie", id: "sktonline-movie", name: "SKTonline Filmy" },
@@ -19,16 +19,16 @@ const builder = addonBuilder({
     idPrefixes: ["tt"]
 });
 
-// Hlavičky pre priame požiadavky
+// Hlavičky pre požiadavky
 const commonHeaders = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0.0.0 Safari/537.36',
     'Accept-Encoding': 'identity'
 };
 
-// Pôvodné konštanty pre PROXY sú ZAKOMENTOVANÉ a NEPOUŽÍVAJÚ sa.
-// const PROXY_KEY = '205111';
-// const PROXY_BASE_URL = 'https://corsproxy.io/?';
-
+// --- KONŠTANTY PRE PROXY (AKTÍVNE) ---
+const PROXY_KEY = '205111'; // *** TVOJ API KĽÚČ ***
+const PROXY_BASE_URL = 'https://corsproxy.io/?';
+// --- KONŠTANTY PRE PROXY (KONIEC) ---
 
 function removeDiacritics(str) {
     return str.normalize("NFD").replace(/\p{Diacritic}/gu, "");
@@ -101,13 +101,14 @@ async function getTitleFromIMDb(imdbId) {
 }
 
 async function searchOnlineVideos(query) {
-    // --- ZMENA: Priama URL, bez proxy ---
-    const searchUrl = `https://online.sktorrent.eu/search/videos?search_query=${encodeURIComponent(query)}`;
-    console.log(`[INFO] 🔍 Hľadám '${query}' na ${searchUrl} (priamo)`); // Loguje "priamo"
-    // --- Koniec zmeny ---
+    const originalSearchUrl = `https://online.sktorrent.eu/search/videos?search_query=${encodeURIComponent(query)}`;
+    // URL pre proxy, ktorá zapuzdruje pôvodnú URL
+    const fullProxiedUrlParam = `key=${PROXY_KEY}&url=${encodeURIComponent(originalSearchUrl)}`;
+    const proxiedSearchUrl = `${PROXY_BASE_URL}${encodeURIComponent(fullProxiedUrlParam)}`;
+    console.log(`[INFO] 🔍 Hľadám '${query}' na ${proxiedSearchUrl} (cez proxy)`);
 
     try {
-        const res = await axios.get(searchUrl, { headers: commonHeaders }); // Používa searchUrl priamo
+        const res = await axios.get(proxiedSearchUrl, { headers: commonHeaders });
         console.log(`[DEBUG] Status: ${res.status}`);
         // Log len prvých 1000 znakov, aby neboli logy príliš dlhé
         console.log(`[DEBUG] HTML Snippet:`, res.data.slice(0, 1000));
@@ -115,9 +116,10 @@ async function searchOnlineVideos(query) {
         const $ = cheerio.load(res.data);
         const links = [];
 
-        // --- Pôvodná / upravená logika SCRAPOVANIA ---
+        // --- Logika scrapovania (upravená na hľadanie div.video-item a potom a[href]) ---
         $('div.video-item a[href^="/video/"]').each((i, el) => {
             const href = $(el).attr('href');
+            // Z url /video/14371/malery-pana-ucetniho-... extrahujeme len 14371
             const match = href ? href.match(/\/video\/(\d+)\//) : null;
             if (match && match[1]) {
                 const videoId = match[1];
@@ -127,7 +129,7 @@ async function searchOnlineVideos(query) {
                 }
             }
         });
-        // --- Koniec logiky SCRAPOVANIA ---
+        // --- Koniec logiky scrapovania ---
 
         console.log(`[INFO] 📺 Nájdených videí: ${links.length}`);
         return links;
@@ -138,14 +140,15 @@ async function searchOnlineVideos(query) {
 }
 
 async function extractStreamsFromVideoId(videoId) {
-    // --- ZMENA: Priama URL, bez proxy ---
-    const videoUrl = `https://online.sktorrent.eu/video/${videoId}`;
-    console.log(`[DEBUG] 🔎 Načítavam detaily videa: ${videoUrl} (priamo)`); // Loguje "priamo"
-    // --- Koniec zmeny ---
+    const originalVideoUrl = `https://online.sktorrent.eu/video/${videoId}`;
+    // URL pre proxy, ktorá zapuzdruje pôvodnú URL
+    const fullProxiedUrlParam = `key=${PROXY_KEY}&url=${encodeURIComponent(originalVideoUrl)}`;
+    const proxiedVideoUrl = `${PROXY_BASE_URL}${encodeURIComponent(fullProxiedUrlParam)}`;
+    console.log(`[DEBUG] 🔎 Načítavam detaily videa: ${proxiedVideoUrl} (cez proxy)`);
 
     try {
-        // Použi 'videoUrl' namiesto 'proxiedUrl'
-        const res = await axios.get(videoUrl, { headers: commonHeaders });
+        // Použi proxiedVideoUrl pre požiadavku
+        const res = await axios.get(proxiedVideoUrl, { headers: commonHeaders });
         console.log(`[DEBUG] Status: ${res.status}`);
         console.log(`[DEBUG] Detail HTML Snippet (first 5000 chars):`, res.data.slice(0, 5000));
 
@@ -159,6 +162,14 @@ async function extractStreamsFromVideoId(videoId) {
             let src = $(el).attr('src');
             const label = $(el).attr('label') || 'Unknown';
             if (src && src.endsWith('.mp4')) {
+                // src musí byť relatívne k online.sktorrent.eu a potom cez proxy
+                // Ak je src už kompletná URL, tak ju použijeme. Ak je relatívna, musíme ju spojiť s bázovou URL SKTorrentu.
+                // Väčšinou bývajú stream URL už absolútne.
+                
+                // Dôležité: STREAM URL SA NEBUDE VOLAŤ CEZ CORSPROXY.IO!
+                // Streamy často potrebujú priame volanie, alebo iný proxy.
+                // Ak streamy nefungujú, je to ďalší problém mimo proxy pre scraping HTML.
+                // Pre MP4 streamy sa zvyčajne proxy nepoužíva, lebo Stremio player by to už mal vedieť prehrať priamo.
                 src = src.replace(/([^:])\/\/+/, '$1/');
                 console.log(`[DEBUG] 🎞️ ${label} stream URL: ${src}`);
                 streams.push({
