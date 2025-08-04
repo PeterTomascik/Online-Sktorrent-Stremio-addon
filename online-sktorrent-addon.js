@@ -1,33 +1,13 @@
-// online-sktorrent-addon.js
-// Note: Use Node.js v20.09 LTS for testing (https://nodejs.org/en/blog/release/v20.9.0)
-const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
+// netlify/functions/scrape.js
 const axios = require("axios");
 const cheerio = require("cheerio");
 const { decode } = require("entities");
 
-const builder = addonBuilder({
-    id: "org.stremio.sktonline",
-    version: "1.0.0",
-    name: "SKTonline Online Streams",
-    description: "Priame online videá (720p/480p/360p) z online.sktorrent.eu (cez CodeTabs proxy)", // Upravený popis
-    types: ["movie", "series"],
-    catalogs: [
-        { type: "movie", id: "sktonline-movie", name: "SKTonline Filmy" },
-        { type: "series", id: "sktonline-series", name: "SKTonline Seriály" }
-    ],
-    resources: ["stream"],
-    idPrefixes: ["tt"]
-});
-
-// Hlavičky pre požiadavky
+// Hlavičky pre priame požiadavky na online.sktorrent.eu
 const commonHeaders = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0.0.0 Safari/537.36',
     'Accept-Encoding': 'identity'
 };
-
-// --- KONŠTANTY PRE PROXY (api.codetabs.com) ---
-const PROXY_BASE_URL = 'https://api.codetabs.com/v1/proxy?quest=';
-// --- KONŠTANTY PRE PROXY (KONIEC) ---
 
 function removeDiacritics(str) {
     return str.normalize("NFD").replace(/\p{Diacritic}/gu, "");
@@ -37,6 +17,7 @@ function shortenTitle(title, wordCount = 3) {
     return title.split(/\s+/).slice(0, wordCount).join(" ");
 }
 
+// Funkcie pre formatovanie, ktoré nepotrebujú meniť
 function extractFlags(title) {
     const flags = [];
     if (/\bCZ\b/i.test(title)) flags.push("cz");
@@ -70,54 +51,23 @@ function formatName(fullTitle, flagsArray) {
     return fullTitle + "\n⚙️SKTonline" + (iconStr ? "\n" + iconStr : "");
 }
 
-async function getTitleFromIMDb(imdbId) {
-    try {
-        const url = `https://www.imdb.com/title/${imdbId}/`;
-        console.log(`[DEBUG] 🌐 IMDb Request: ${url}`);
-        const res = await axios.get(url, { headers: commonHeaders });
 
-        if (res.status === 404) {
-            console.error("[ERROR] IMDb scraping zlyhal: stránka neexistuje (404)");
-            return null;
-        }
-
-        const $ = cheerio.load(res.data);
-        const titleRaw = $('title').text().split(' - ')[0].trim();
-        const title = decode(titleRaw);
-        const ldJson = $('script[type="application/ld+json"]').html();
-        let originalTitle = title;
-        if (ldJson) {
-            const json = JSON.parse(ldJson);
-            if (json && json.name) originalTitle = decode(json.name.trim());
-        }
-
-        console.log(`[DEBUG] 🎬 IMDb title: ${title}, original: ${originalTitle}`);
-        return { title, originalTitle };
-    } catch (err) {
-        console.error("[ERROR] IMDb scraping zlyhal:", err.message);
-        return null;
-    }
-}
-
+// --- Hlavné scraping funkcie upravené pre priame volanie na sktorrent ---
 async function searchOnlineVideos(query) {
-    const originalSearchUrl = `https://online.sktorrent.eu/search/videos?search_query=${encodeURIComponent(query)}`;
-    // URL pre proxy, ktorá zapuzdruje pôvodnú URL
-    const proxiedSearchUrl = `${PROXY_BASE_URL}${encodeURIComponent(originalSearchUrl)}`;
-    console.log(`[INFO] 🔍 Hľadám '${query}' na ${proxiedSearchUrl} (cez CodeTabs proxy)`);
+    const searchUrl = `https://online.sktorrent.eu/search/videos?search_query=${encodeURIComponent(query)}`;
+    console.log(`[SCRAPER] Hľadám '${query}' na ${searchUrl} (priamo)`);
 
     try {
-        const res = await axios.get(proxiedSearchUrl, { headers: commonHeaders });
-        console.log(`[DEBUG] Status: ${res.status}`);
-        // Log len prvých 1000 znakov, aby neboli logy príliš dlhé
-        console.log(`[DEBUG] HTML Snippet:`, res.data.slice(0, 1000));
+        const res = await axios.get(searchUrl, { headers: commonHeaders });
+        console.log(`[SCRAPER] Status vyhľadávania: ${res.status}`);
+        // console.log(`[SCRAPER] HTML Snippet vyhľadávania:`, res.data.slice(0, 1000)); // Zakomentované pre kratšie logy
 
         const $ = cheerio.load(res.data);
         const links = [];
 
-        // Logika scrapovania (upravená na hľadanie div.video-item a potom a[href])
+        // Logika scrapovania pre video IDs
         $('div.video-item a[href^="/video/"]').each((i, el) => {
             const href = $(el).attr('href');
-            // Z url /video/14371/malery-pana-ucetniho-... extrahujeme len 14371
             const match = href ? href.match(/\/video\/(\d+)\//) : null;
             if (match && match[1]) {
                 const videoId = match[1];
@@ -128,25 +78,22 @@ async function searchOnlineVideos(query) {
             }
         });
 
-        console.log(`[INFO] 📺 Nájdených videí: ${links.length}`);
+        console.log(`[SCRAPER] Nájdených videí: ${links.length}`);
         return links;
     } catch (err) {
-        console.error("[ERROR] ❌ Vyhľadávanie online videí zlyhalo:", err.message);
+        console.error("[SCRAPER ERROR] Vyhľadávanie online videí zlyhalo:", err.message);
         return [];
     }
 }
 
 async function extractStreamsFromVideoId(videoId) {
-    const originalVideoUrl = `https://online.sktorrent.eu/video/${videoId}`;
-    // URL pre proxy, ktorá zapuzdruje pôvodnú URL
-    const proxiedVideoUrl = `${PROXY_BASE_URL}${encodeURIComponent(originalVideoUrl)}`;
-    console.log(`[DEBUG] 🔎 Načítavam detaily videa: ${proxiedVideoUrl} (cez CodeTabs proxy)`);
+    const videoUrl = `https://online.sktorrent.eu/video/${videoId}`;
+    console.log(`[SCRAPER] Načítavam detaily videa: ${videoUrl} (priamo)`);
 
     try {
-        // Použi proxiedVideoUrl pre požiadavku
-        const res = await axios.get(proxiedVideoUrl, { headers: commonHeaders });
-        console.log(`[DEBUG] Status: ${res.status}`);
-        console.log(`[DEBUG] Detail HTML Snippet (first 5000 chars):`, res.data.slice(0, 5000));
+        const res = await axios.get(videoUrl, { headers: commonHeaders });
+        console.log(`[SCRAPER] Status detailu videa: ${res.status}`);
+        // console.log(`[SCRAPER] Detail HTML Snippet:`, res.data.slice(0, 5000)); // Zakomentované pre kratšie logy
 
         const $ = cheerio.load(res.data);
         const sourceTags = $('video source');
@@ -158,9 +105,8 @@ async function extractStreamsFromVideoId(videoId) {
             let src = $(el).attr('src');
             const label = $(el).attr('label') || 'Unknown';
             if (src && src.endsWith('.mp4')) {
-                // Pre MP4 streamy sa zvyčajne proxy nepoužíva, lebo Stremio player by to už mal vedieť prehrať priamo.
                 src = src.replace(/([^:])\/\/+/, '$1/');
-                console.log(`[DEBUG] 🎞️ ${label} stream URL: ${src}`);
+                console.log(`[SCRAPER] ${label} stream URL: ${src}`);
                 streams.push({
                     title: formatName(titleText, flags),
                     name: formatTitle(label),
@@ -169,22 +115,86 @@ async function extractStreamsFromVideoId(videoId) {
             }
         });
 
-        console.log(`[INFO] ✅ Našiel som ${streams.length} streamov pre videoId=${videoId}`);
+        console.log(`[SCRAPER] Našiel som ${streams.length} streamov pre videoId=${videoId}`);
         return streams;
     } catch (err) {
-        console.error("[ERROR] ❌ Chyba pri načítaní detailu videa:", err.message);
+        console.error("[SCRAPER ERROR] Chyba pri načítaní detailu videa:", err.message);
         return [];
     }
 }
 
-builder.defineStreamHandler(async ({ type, id }) => {
-    console.log(`\n====== 🎮 STREAM požiadavka: type='${type}', id='${id}' ======`);
-    const [imdbId, seasonStr, episodeStr] = id.split(":");
-    const season = seasonStr ? parseInt(seasonStr) : null;
-    const episode = episodeStr ? parseInt(episodeStr) : null;
+
+// --- HLAVNÁ HANDLER FUNKCIA PRE NETLIFY ---
+exports.handler = async (event, context) => {
+    // Netlify funkcie prijímajú parametre v event.queryStringParameters
+    // Alebo v tele požiadavky (event.body) ak je to POST
+    if (event.httpMethod !== 'POST') { // Očakávame POST pre lepšie spracovanie JSON dát
+        return {
+            statusCode: 405,
+            body: JSON.stringify({ message: "Metóda nie je povolená. Použite POST." }),
+        };
+    }
+
+    let payload;
+    try {
+        payload = JSON.parse(event.body);
+    } catch (error) {
+        console.error("[SCRAPER ERROR] Chyba pri parsovaní JSON payloadu:", error.message);
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ message: "Neplatný JSON formát v tele požiadavky." }),
+        };
+    }
+
+    const { imdbId, type, season, episode } = payload; // Destrukturujeme z payloadu
+
+    if (!imdbId || !type) {
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ message: "Chýbajúce parametre: imdbId alebo type." }),
+        };
+    }
+
+    console.log(`\n====== [NETLIFY FUNCTION] Požiadavka pre: type='${type}', id='${imdbId}:${season}:${episode}' ======`);
+
+    // Pôvodná logika získania titulov z IMDb (volať priamo z funkcie)
+    async function getTitleFromIMDb(imdbId) {
+        try {
+            const url = `https://www.imdb.com/title/${imdbId}/`;
+            console.log(`[SCRAPER] 🌐 IMDb Request: ${url}`);
+            const res = await axios.get(url, { headers: commonHeaders });
+
+            if (res.status === 404) {
+                console.error("[SCRAPER ERROR] IMDb scraping zlyhal: stránka neexistuje (404)");
+                return null;
+            }
+
+            const $ = cheerio.load(res.data);
+            const titleRaw = $('title').text().split(' - ')[0].trim();
+            const title = decode(titleRaw);
+            const ldJson = $('script[type="application/ld+json"]').html();
+            let originalTitle = title;
+            if (ldJson) {
+                const json = JSON.parse(ldJson);
+                if (json && json.name) originalTitle = decode(json.name.trim());
+            }
+
+            console.log(`[SCRAPER] 🎬 IMDb title: ${title}, original: ${originalTitle}`);
+            return { title, originalTitle };
+        } catch (err) {
+            console.error("[SCRAPER ERROR] IMDb scraping zlyhal:", err.message);
+            return null;
+        }
+    }
+
 
     const titles = await getTitleFromIMDb(imdbId);
-    if (!titles) return { streams: [] };
+    if (!titles) {
+        return {
+            statusCode: 200, // Stále vrátime 200, ak sa nenašli streamy
+            body: JSON.stringify({ streams: [] }),
+        };
+    }
 
     const { title, originalTitle } = titles;
     const queries = new Set();
@@ -212,7 +222,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
     let allStreams = [];
     let attempt = 1;
     for (const q of queries) {
-        console.log(`[DEBUG] 🔍 Pokus ${attempt++}: '${q}'`);
+        console.log(`[SCRAPER] Pokus ${attempt++}: '${q}'`);
         const videoIds = await searchOnlineVideos(q);
         for (const vid of videoIds) {
             const streams = await extractStreamsFromVideoId(vid);
@@ -221,15 +231,11 @@ builder.defineStreamHandler(async ({ type, id }) => {
         if (allStreams.length > 0) break;
     }
 
-    console.log(`[INFO] 📤 Odosielam ${allStreams.length} streamov do Stremio`);
-    return { streams: allStreams };
-});
+    console.log(`[SCRAPER] Odosielam ${allStreams.length} streamov.`);
 
-builder.defineCatalogHandler(async ({ type, id }) => {
-    console.log(`[DEBUG] 📚 Katalóg požiadavka pre typ='${type}' id='${id}'`);
-    return { metas: [] };
-});
-
-console.log("📦 Manifest:", builder.getInterface().manifest);
-serveHTTP(builder.getInterface(), { port: 7000 });
-console.log("🚀 SKTonline Online addon beží na http://localhost:7000/manifest.json");
+    // Vrátime výsledok ako JSON
+    return {
+        statusCode: 200,
+        body: JSON.stringify({ streams: allStreams }),
+    };
+};
