@@ -24,10 +24,10 @@ const commonHeaders = {
     'Accept-Encoding': 'identity'
 };
 
-// --- NOVÉ KONŠTANTY PRE PROXY (ZAČIATOK ZMENY) ---
-const PROXY_KEY = '205111'; // *** SEM NAHRAĎ SVOJ SKUTOČNÝ KĽÚČ Z corsproxy.io ***
+// --- NOVÉ KONŠTANTY PRE PROXY (OPRAVENÁ LOGIKA) ---
+const PROXY_KEY = '205111; // *** SEM NAHRAĎ SVOJ SKUTOČNÝ KĽÚČ (pravdepodobne '205111') ***
 const PROXY_BASE_URL = 'https://corsproxy.io/?'; 
-// --- NOVÉ KONŠTANTY PRE PROXY (KONIEC ZMENY) ---
+// --- NOVÉ KONŠTANTY PRE PROXY (KONIEC OPRAVY) ---
 
 
 function removeDiacritics(str) {
@@ -102,13 +102,14 @@ async function getTitleFromIMDb(imdbId) {
 
 async function searchOnlineVideos(query) {
     const originalSearchUrl = `https://online.sktorrent.eu/search/videos?search_query=${encodeURIComponent(query)}`;
-    // --- ZMENA PRE PROXY (ZAČIATOK ZMENY) ---
-    const proxiedSearchUrl = `${PROXY_BASE_URL}key=${PROXY_KEY}&url=${encodeURIComponent(originalSearchUrl)}`;
+    // --- ZMENA PRE PROXY (OPRAVENÁ LOGIKA) ---
+    // Najprv vytvoríme celú URL s kľúčom a pôvodnou URL, a potom ju ZNOVA zakódujeme
+    const fullProxiedUrlParam = `key=${PROXY_KEY}&url=${encodeURIComponent(originalSearchUrl)}`;
+    const proxiedSearchUrl = `${PROXY_BASE_URL}${encodeURIComponent(fullProxiedUrlParam)}`;
     console.log(`[INFO] 🔍 Hľadám '${query}' na ${proxiedSearchUrl} (cez proxy)`);
-    // --- ZMENA PRE PROXY (KONIEC ZMENY) ---
+    // --- ZMENA PRE PROXY (KONIEC OPRAVY) ---
 
     try {
-        // Použi proxiedSearchUrl pre axios požiadavku
         const res = await axios.get(proxiedSearchUrl, { headers: commonHeaders }); 
         console.log(`[DEBUG] Status: ${res.status}`);
         console.log(`[DEBUG] HTML Snippet:`, res.data.slice(0, 300));
@@ -133,13 +134,14 @@ async function searchOnlineVideos(query) {
 
 async function extractStreamsFromVideoId(videoId) {
     const originalUrl = `https://online.sktorrent.eu/video/${videoId}`;
-    // --- ZMENA PRE PROXY (ZAČIATOK ZMENY) ---
-    const proxiedUrl = `${PROXY_BASE_URL}key=${PROXY_KEY}&url=${encodeURIComponent(originalUrl)}`;
+    // --- ZMENA PRE PROXY (OPRAVENÁ LOGIKA) ---
+    // Najprv vytvoríme celú URL s kľúčom a pôvodnou URL, a potom ju ZNOVA zakódujeme
+    const fullProxiedUrlParam = `key=${PROXY_KEY}&url=${encodeURIComponent(originalUrl)}`;
+    const proxiedUrl = `${PROXY_BASE_URL}${encodeURIComponent(fullProxiedUrlParam)}`;
     console.log(`[DEBUG] 🔎 Načítavam detaily videa: ${proxiedUrl} (cez proxy)`);
-    // --- ZMENA PRE PROXY (KONIEC ZMENY) ---
+    // --- ZMENA PRE PROXY (KONIEC OPRAVY) ---
 
     try {
-        // Použi proxiedUrl pre axios požiadavku
         const res = await axios.get(proxiedUrl, { headers: commonHeaders });
         console.log(`[DEBUG] Status: ${res.status}`);
         console.log(`[DEBUG] Detail HTML Snippet:`, res.data.slice(0, 300));
