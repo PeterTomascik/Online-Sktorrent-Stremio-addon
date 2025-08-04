@@ -24,6 +24,12 @@ const commonHeaders = {
     'Accept-Encoding': 'identity'
 };
 
+// --- NOVÉ KONŠTANTY PRE PROXY (ZAČIATOK ZMENY) ---
+const PROXY_KEY = '205111'; // *** SEM NAHRAĎ SVOJ SKUTOČNÝ KĽÚČ Z corsproxy.io ***
+const PROXY_BASE_URL = 'https://corsproxy.io/?'; 
+// --- NOVÉ KONŠTANTY PRE PROXY (KONIEC ZMENY) ---
+
+
 function removeDiacritics(str) {
     return str.normalize("NFD").replace(/\p{Diacritic}/gu, "");
 }
@@ -95,10 +101,15 @@ async function getTitleFromIMDb(imdbId) {
 }
 
 async function searchOnlineVideos(query) {
-    const searchUrl = `https://online.sktorrent.eu/search/videos?search_query=${encodeURIComponent(query)}`;
-    console.log(`[INFO] 🔍 Hľadám '${query}' na ${searchUrl}`);
+    const originalSearchUrl = `https://online.sktorrent.eu/search/videos?search_query=${encodeURIComponent(query)}`;
+    // --- ZMENA PRE PROXY (ZAČIATOK ZMENY) ---
+    const proxiedSearchUrl = `${PROXY_BASE_URL}key=${PROXY_KEY}&url=${encodeURIComponent(originalSearchUrl)}`;
+    console.log(`[INFO] 🔍 Hľadám '${query}' na ${proxiedSearchUrl} (cez proxy)`);
+    // --- ZMENA PRE PROXY (KONIEC ZMENY) ---
+
     try {
-        const res = await axios.get(searchUrl, { headers: commonHeaders });
+        // Použi proxiedSearchUrl pre axios požiadavku
+        const res = await axios.get(proxiedSearchUrl, { headers: commonHeaders }); 
         console.log(`[DEBUG] Status: ${res.status}`);
         console.log(`[DEBUG] HTML Snippet:`, res.data.slice(0, 300));
 
@@ -121,94 +132,6 @@ async function searchOnlineVideos(query) {
 }
 
 async function extractStreamsFromVideoId(videoId) {
-    const url = `https://online.sktorrent.eu/video/${videoId}`;
-    console.log(`[DEBUG] 🔎 Načítavam detaily videa: ${url}`);
-    try {
-        const res = await axios.get(url, { headers: commonHeaders });
-        console.log(`[DEBUG] Status: ${res.status}`);
-        console.log(`[DEBUG] Detail HTML Snippet:`, res.data.slice(0, 300));
-
-        const $ = cheerio.load(res.data);
-        const sourceTags = $('video source');
-        const titleText = $('title').text().trim();
-        const flags = extractFlags(titleText);
-
-        const streams = [];
-        sourceTags.each((i, el) => {
-            let src = $(el).attr('src');
-            const label = $(el).attr('label') || 'Unknown';
-            if (src && src.endsWith('.mp4')) {
-                src = src.replace(/([^:])\/\/+/, '$1/');
-                console.log(`[DEBUG] 🎞️ ${label} stream URL: ${src}`);
-                streams.push({
-                    title: formatName(titleText, flags),
-                    name: formatTitle(label),
-                    url: src
-                });
-            }
-        });
-
-        console.log(`[INFO] ✅ Našiel som ${streams.length} streamov pre videoId=${videoId}`);
-        return streams;
-    } catch (err) {
-        console.error("[ERROR] ❌ Chyba pri načítaní detailu videa:", err.message);
-        return [];
-    }
-}
-
-builder.defineStreamHandler(async ({ type, id }) => {
-    console.log(`\n====== 🎮 STREAM požiadavka: type='${type}', id='${id}' ======`);
-    const [imdbId, seasonStr, episodeStr] = id.split(":");
-    const season = seasonStr ? parseInt(seasonStr) : null;
-    const episode = episodeStr ? parseInt(episodeStr) : null;
-
-    const titles = await getTitleFromIMDb(imdbId);
-    if (!titles) return { streams: [] };
-
-    const { title, originalTitle } = titles;
-    const queries = new Set();
-
-    const baseTitles = [title, originalTitle].map(t => t.replace(/\(.*?\)/g, '').trim());
-    for (const base of baseTitles) {
-        const noDia = removeDiacritics(base);
-        const short = shortenTitle(noDia);
-        const short1 = shortenTitle(noDia, 1);
-
-        if (type === 'series' && season && episode) {
-            const epTag1 = `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
-            const epTag2 = `${season}x${episode}`;
-            [base, noDia, short, short1].forEach(b => {
-                queries.add(`${b} ${epTag1}`);
-                queries.add(`${b} ${epTag2}`);
-            });
-        } else {
-            [base, noDia, short].forEach(b => {
-                queries.add(b);
-            });
-        }
-    }
-
-    let allStreams = [];
-    let attempt = 1;
-    for (const q of queries) {
-        console.log(`[DEBUG] 🔍 Pokus ${attempt++}: '${q}'`);
-        const videoIds = await searchOnlineVideos(q);
-        for (const vid of videoIds) {
-            const streams = await extractStreamsFromVideoId(vid);
-            allStreams.push(...streams);
-        }
-        if (allStreams.length > 0) break;
-    }
-
-    console.log(`[INFO] 📤 Odosielam ${allStreams.length} streamov do Stremio`);
-    return { streams: allStreams };
-});
-
-builder.defineCatalogHandler(({ type, id }) => {
-    console.log(`[DEBUG] 📚 Katalóg požiadavka pre typ='${type}' id='${id}'`);
-    return { metas: [] };
-});
-
-console.log("📦 Manifest:", builder.getInterface().manifest);
-serveHTTP(builder.getInterface(), { port: 7000 });
-console.log("🚀 SKTonline Online addon beží na http://localhost:7000/manifest.json");
+    const originalUrl = `https://online.sktorrent.eu/video/${videoId}`;
+    // --- ZMENA PRE PROXY (ZAČIATOK ZMENY) ---
+    const proxiedUrl = `${PROXY_
